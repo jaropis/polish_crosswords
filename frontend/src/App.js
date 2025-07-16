@@ -101,7 +101,7 @@ function App() {
             <div className="letter-inputs">
               {letterInputs.map((letter, index) => (
                 <div key={index} className="letter-position">
-                  <div className="position-number">{index}</div>
+                  <div className="position-number">{index + 1}</div>
                   <input
                     type="text"
                     maxLength="1"
