@@ -1,9 +1,12 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from flask_jwt_extended import JWTManager
 import time
 
 app = Flask(__name__)
 CORS(app)  # enabling cross-origin requests for development
+app.config['JWT_SECRET_KEY'] = "12345"
+jwt = JWTManager(app)
 
 # dictionary cache to improve performance
 word_cache = {}
