@@ -1,16 +1,30 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from flask_jwt_extended import JWTManager, create_access_token, jwt_required
+from flask_jwt_extended import JWTManager, create_access_token, create_refresh_token, jwt_required
 import time
 from werkzeug.security import generate_password_hash, check_password_hash
 from db import init_db, get_db, close_db
 import sqlite3
-
+import uuid
+from datetime import datetime, timedelta
 app = Flask(__name__)
 CORS(app)  # enabling cross-origin requests for development
 app.teardown_appcontext(close_db)
 app.config['JWT_SECRET_KEY'] = "12345"
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(minutes=15)
+app.config['JWT_REFRESH_TOKEN_EXPIRES'] = timedelta(days=30)
 jwt = JWTManager(app)
+
+# store for backend tokens (in production use Redis or database)
+backlisted_tokens = set()
+
+@jwt.token_in_blocklist_loader
+def check_if_token_revoked(jwt_header, jwt_payload):
+    """
+    Check if the token is in the blacklist
+    """
+    jti = jwt_payload['jti'] in backlisted_tokens
+    return jti
 
 # dictionary cache to improve performance
 word_cache = {}
@@ -174,9 +188,20 @@ def login_user():
     
     if user and check_password_hash(user['password_hash'], password):
         access_token = create_access_token(identity=email)
-        return jsonify({'access_token': access_token}), 200
+        refresh_token = create_refresh_token(identity=email)
+
+        # storing refresh token in database
+        refresh_token_id= str(uuid.uuid4())
+        expires_at = datetime.now(datetime.timezone.utc) + app.config['JWT_REFRESH_TOKEN_EXPIRES']
+        cursor.execute('''
+                       INSERT INTO RefreshTokens (id, user_email, token_hash, expires_at) 
+                       VALUES (?, ?, ?, ?, ?)')''', (refresh_token_id, email, generate_password_hash(refresh_token), expires_at))
+        db.commit()
+        return jsonify({'access_token': access_token, 'refresh_token': refresh_token}), 200
     else:
         return jsonify({'error': 'Invalid credentials.'}), 401
+    
+    
 if __name__ == '__main__':
     # loading dictionary at startup
     load_dictionary()
