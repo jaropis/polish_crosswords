@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from flask_jwt_extended import JWTManager, create_access_token
+from flask_jwt_extended import JWTManager, create_access_token, jwt_required
 import time
 from werkzeug.security import generate_password_hash, check_password_hash
 from db import init_db, get_db, close_db
@@ -58,6 +58,7 @@ def load_dictionary():
         dictionary_loaded = False
 
 @app.route('/search', methods=['POST'])
+@jwt_required()
 def search_words():
     try:
         # loading dictionary if not already loaded
@@ -99,6 +100,7 @@ def search_words():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/stats', methods=['GET'])
+@jwt_required()
 def get_stats():
     """
     Get dictionary statistics
