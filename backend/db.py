@@ -1,6 +1,7 @@
 from flask import g
+import sqlite3
+
 def init_db():
-    import sqlite3
     from pathlib import Path
 
     db_path = Path(__file__).parent / 'users.db'
@@ -30,7 +31,7 @@ def get_db():
         g.db.row_factory = sqlite3.Row  # to return rows as dictionaries
     return g.db
 
-def close_db():
+def close_db(error=None):
     """Close the database connection at the end of request"""
     db = g.pop('db', None)
         
