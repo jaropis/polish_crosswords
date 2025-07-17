@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from flask_jwt_extended import JWTManager
+from flask_jwt_extended import JWTManager, create_access_token
 import time
 from werkzeug.security import generate_password_hash, check_password_hash
 from db import init_db, get_db, close_db
@@ -151,6 +151,8 @@ def register_user():
         return jsonify({'error': 'Email already exists.'}), 409
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+    
+@app.route('/login', methods=['POST'])    
 def login_user():
     """
     Authenticate a user and return a JWT token.
@@ -169,7 +171,7 @@ def login_user():
     user = cursor.fetchone()
     
     if user and check_password_hash(user['password_hash'], password):
-        access_token = jwt.create_access_token(identity=email)
+        access_token = create_access_token(identity=email)
         return jsonify({'access_token': access_token}), 200
     else:
         return jsonify({'error': 'Invalid credentials.'}), 401
