@@ -151,7 +151,28 @@ def register_user():
         return jsonify({'error': 'Email already exists.'}), 409
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
+def login_user():
+    """
+    Authenticate a user and return a JWT token.
+    """
+    data = request.json
+    email = data.get('email')
+    password = data.get('password')
+    
+    if not email or not password:
+        return jsonify({'error': 'Email and password are required.'}), 400
+    
+    db = get_db()
+    cursor = db.cursor()
+    
+    cursor.execute('SELECT password_hash FROM Users WHERE email = ?', (email,))
+    user = cursor.fetchone()
+    
+    if user and check_password_hash(user['password_hash'], password):
+        access_token = jwt.create_access_token(identity=email)
+        return jsonify({'access_token': access_token}), 200
+    else:
+        return jsonify({'error': 'Invalid credentials.'}), 401
 if __name__ == '__main__':
     # loading dictionary at startup
     load_dictionary()
