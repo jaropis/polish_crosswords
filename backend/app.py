@@ -241,6 +241,7 @@ def logout_user():
     db.commit()
 
     return jsonify({'message': 'Succesfully logged out'}), 200
+
 if __name__ == '__main__':
     # loading dictionary at startup
     load_dictionary()
