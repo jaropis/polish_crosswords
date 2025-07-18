@@ -9,22 +9,24 @@ def init_db():
     cursor = conn.cursor()
 
     # Create tables if they do not exist
+    print("1 Creating Users table if it does not exist")
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS Users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             email TEXT NOT NULL UNIQUE,
             password_hash TEXT NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-                   
-        CREATE TABLE IF NOT EXISTS RefreshTokens (
-            id TEXT PRIMARY KEY,
-            user_email TEXT NOT NULL,
-            token_hash TEXT NOT NULL,
-            expires_at TIMESTAMP NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_email) REFERENCES Users (email)
-        );
+        );''')
+
+    print("2 Creating RefreshTokens table if it does not exist")
+    cursor.execute('''CREATE TABLE IF NOT EXISTS RefreshTokens (
+        id TEXT PRIMARY KEY,
+        user_email TEXT NOT NULL,
+        token_hash TEXT NOT NULL,
+        expires_at TIMESTAMP NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_email) REFERENCES Users (email)
+    );
     ''')
     
     conn.commit()

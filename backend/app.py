@@ -6,7 +6,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from db import init_db, get_db, close_db
 import sqlite3
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 app = Flask(__name__)
 CORS(app)  # enabling cross-origin requests for development
 app.teardown_appcontext(close_db)
@@ -191,7 +191,7 @@ def login_user():
 
         # storing refresh token in database
         refresh_token_id= str(uuid.uuid4())
-        expires_at = datetime.now(datetime.timezone.utc) + app.config['JWT_REFRESH_TOKEN_EXPIRES']
+        expires_at = datetime.now(timezone.utc) + app.config['JWT_REFRESH_TOKEN_EXPIRES']
         cursor.execute('''
                        INSERT INTO RefreshTokens (id, user_email, token_hash, expires_at) 
                        VALUES (?, ?, ?, ?)''', (refresh_token_id, email, generate_password_hash(refresh_token), expires_at))
@@ -216,7 +216,7 @@ def refresh_token():
                     SELECT id FROM RefreshTokens
                     WHERE user_email = ? AND expires_at > ?
                     ORDER BY expires_at DESC LIMIT 1
-                    ''', (current_user, datetime.now(datetime.timezone.utc)))
+                    ''', (current_user, datetime.now(timezone.utc)))
     if not cursor.fetchone():
         return jsonify({'error': 'Invalid refresh token'}), 401
     new_access_token = create_access_token(identity=current_user)
