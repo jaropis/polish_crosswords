@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from flask_jwt_extended import JWTManager, create_access_token, create_refresh_token, jwt_required
+from flask_jwt_extended import JWTManager, create_access_token, create_refresh_token, jwt_required, get_jwt_identity, get_jwt
 import time
 from werkzeug.security import generate_password_hash, check_password_hash
 from db import init_db, get_db, close_db
@@ -16,15 +16,14 @@ app.config['JWT_REFRESH_TOKEN_EXPIRES'] = timedelta(days=30)
 jwt = JWTManager(app)
 
 # store for backend tokens (in production use Redis or database)
-backlisted_tokens = set()
+blacklisted_tokens = set()
 
 @jwt.token_in_blocklist_loader
 def check_if_token_revoked(jwt_header, jwt_payload):
     """
     Check if the token is in the blacklist
     """
-    jti = jwt_payload['jti'] in backlisted_tokens
-    return jti
+    return jwt_payload['jti'] in blacklisted_tokens
 
 # dictionary cache to improve performance
 word_cache = {}
@@ -195,13 +194,53 @@ def login_user():
         expires_at = datetime.now(datetime.timezone.utc) + app.config['JWT_REFRESH_TOKEN_EXPIRES']
         cursor.execute('''
                        INSERT INTO RefreshTokens (id, user_email, token_hash, expires_at) 
-                       VALUES (?, ?, ?, ?, ?)')''', (refresh_token_id, email, generate_password_hash(refresh_token), expires_at))
+                       VALUES (?, ?, ?, ?)''', (refresh_token_id, email, generate_password_hash(refresh_token), expires_at))
         db.commit()
         return jsonify({'access_token': access_token, 'refresh_token': refresh_token}), 200
     else:
         return jsonify({'error': 'Invalid credentials.'}), 401
     
+@app.route('/refresh', methods=['POST'])
+@jwt_required(refresh=True)
+def refresh_token(): 
+    """
+    Generate a new access token using a valid refresh token.
+    """
+    current_user = get_jwt_identity()
+
+    # verify refresh token exists in database
+    db = get_db()
+    cursor = db.cursor()
+
+    cursor.execute('''
+                    SELECT id FROM RefreshTokens
+                    WHERE user_email = ? AND expires_at > ?
+                    ORDER BY expires_at DESC LIMIT 1
+                    ''', (current_user, datetime.now(datetime.timezone.utc)))
+    if not cursor.fetchone():
+        return jsonify({'error': 'Invalid refresh token'}), 401
+    new_access_token = create_access_token(identity=current_user)
+    return jsonify({'access_token': new_access_token}), 200
     
+@app.route('/logout', methods=['POST'])
+@jwt_required()
+def logout_user():
+    """
+    Logout and revoke tokens
+    """
+    current_user = get_jwt_identity()
+    jti = get_jwt()['jti']
+
+    # adding current token to blacklist
+    blacklisted_tokens.add(jti)
+
+    # removing refresh tokens from database
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute('DELETE FROM RefreshTokens WHERE user_email = ?', (current_user,))
+    db.commit()
+
+    return jsonify({'message': 'Succesfully logged out'}), 200
 if __name__ == '__main__':
     # loading dictionary at startup
     load_dictionary()

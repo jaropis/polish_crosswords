@@ -15,7 +15,16 @@ def init_db():
             email TEXT NOT NULL UNIQUE,
             password_hash TEXT NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
+        );
+                   
+        CREATE TABLE IF NOT EXISTS RefreshTokens (
+            id TEXT PRIMARY KEY,
+            user_email TEXT NOT NULL,
+            token_hash TEXT NOT NULL,
+            expires_at TIMESTAMP NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_email) REFERENCES Users (email)
+        );
     ''')
     
     conn.commit()
