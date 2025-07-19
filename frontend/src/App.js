@@ -21,7 +21,89 @@ function App() {
       setIsAuthenticated(true);
     }
   }, []);
+  // AUTHENTICATION LOGIC
 
+  const handleLogin = async (email, password) => {
+    setAuthLoading(true);
+    setAuthError(null);
+
+    try {
+      const response = await fetch("http://localhost:5000/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email, password }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Login failed");
+      }
+
+      const data = await response.json();
+
+      // storing tokens in local storage
+      localStorage.setItem("accessToken", data.accessToken);
+      localStorage.setItem("refreshToken", data.refreshToken);
+      setIsAuthenticated(true);
+    } catch (error) {
+      setAuthError("Nie udało się zalogować: " + error.message);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleRegister = async (email, password) => {
+    setAuthLoading(true);
+    setAuthError(null);
+
+    try {
+      const response = await fetch("http://localhost:5000/register", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email, password }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Registration failed");
+      }
+
+      setShowLogin(true);
+      setAuthError(null);
+    } catch (error) {
+      setAuthError(error.message);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      const token = localStorage.getItem("accessToken");
+      if (token) {
+        await fetch("http://localhost:5000/logout", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        });
+      }
+    } catch (error) {
+      console.log("Logout error:", error);
+    } finally {
+      // clearing tokens regardless of API call success
+      localStorage.removeItem("accessToken");
+      localStorage.removeItem("refreshToken");
+      setIsAuthenticated(false);
+      resetForm();
+    }
+  };
+  // BUSINESS LOGIC
   // handling word length input change
   const handleWordLengthChange = (e) => {
     setWordLength(e.target.value);
@@ -49,6 +131,10 @@ function App() {
     setError(null);
 
     try {
+      const token = localStorage.getItem("accessToken");
+      if (!token) {
+        throw new Error("No authentication token found");
+      }
       const query = letterInputs
         .map((letter, index) =>
           letter ? { position: index, letter: letter } : null,
@@ -59,6 +145,7 @@ function App() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           wordLength: letterInputs.length,
@@ -67,6 +154,18 @@ function App() {
       });
 
       if (!response.ok) {
+        // handling token expiration
+        if (response.status === 401) {
+          // token might be expired, trying to refresh
+          const refreshSuccess = await refreshToken();
+          if (refreshSuccess) {
+            return searchWords();
+          } else {
+            // refresh failed, user needs to login again
+            setIsAuthenticated(false);
+            throw new Error("Session expired. Please login again.");
+          }
+        }
         throw new Error("Network response was not ok");
       }
 
