@@ -15,15 +15,19 @@ app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(minutes=15)
 app.config['JWT_REFRESH_TOKEN_EXPIRES'] = timedelta(days=30)
 jwt = JWTManager(app)
 
-# store for backend tokens (in production use Redis or database)
-blacklisted_tokens = set()
-
 @jwt.token_in_blocklist_loader
 def check_if_token_revoked(jwt_header, jwt_payload):
     """
     Check if the token is in the blacklist
     """
-    return jwt_payload['jti'] in blacklisted_tokens
+    try:
+        db = get_db()
+        cursor = db.cursor()
+        cursor.execute('SELECT id FROM BlacklistedTokens WHERE id = ?', (jwt_payload['jti'],))
+        return cursor.fetchone() is not None
+    except Exception as e:
+        app.logger.error(f"Error checking token blacklist: {str(e)}")
+        return False
 
 # dictionary cache to improve performance
 word_cache = {}
@@ -231,16 +235,21 @@ def logout_user():
     current_user = get_jwt_identity()
     jti = get_jwt()['jti']
 
-    # adding current token to blacklist
-    blacklisted_tokens.add(jti)
+    try:
+        db = get_db()
+        cursor = db.cursor()
+        
+        # adding current token to blacklist table
+        cursor.execute('INSERT INTO BlacklistedTokens (id, token) VALUES (?, ?)', (jti, jti))
+        
+        # removing refresh tokens from database
+        cursor.execute('DELETE FROM RefreshTokens WHERE user_email = ?', (current_user,))
+        db.commit()
 
-    # removing refresh tokens from database
-    db = get_db()
-    cursor = db.cursor()
-    cursor.execute('DELETE FROM RefreshTokens WHERE user_email = ?', (current_user,))
-    db.commit()
-
-    return jsonify({'message': 'Succesfully logged out'}), 200
+        return jsonify({'message': 'Successfully logged out'}), 200
+    except Exception as e:
+        app.logger.error(f"Error during logout: {str(e)}")
+        return jsonify({'error': 'Logout failed'}), 500
 
 if __name__ == '__main__':
     # loading dictionary at startup
