@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import "./App.css";
 
-const AuthForm = () => {
+const AuthForm = ({ setIsAuthenticated }) => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
@@ -39,8 +39,7 @@ const AuthForm = () => {
       // storing tokens in local storage
       localStorage.setItem("accessToken", data.access_token);
       localStorage.setItem("refreshToken", data.refresh_token);
-      // TUTU fix this
-      // setIsAuthenticated(true);
+      setIsAuthenticated(true);
     } catch (error) {
       setAuthError("Nie udało się zalogować: " + error.message);
     } finally {
@@ -198,14 +197,13 @@ function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   // checking authentication status
-  useEffect(() => {
-    const token = localStorage.getItem("accessToken");
-    if (token) {
-      setIsAuthenticated(true);
-    }
-  }, []);
+  // useEffect(() => {
+  //   const token = localStorage.getItem("accessToken");
+  //   if (token) {
+  //     setIsAuthenticated(true);
+  //   }
+  // }, []);
 
-  // BUSINESS LOGIC
   // handling word length input change
   const handleWordLengthChange = (e) => {
     setWordLength(e.target.value);
@@ -303,7 +301,7 @@ function App() {
         )}
       </header>
       {!isAuthenticated ? (
-        <AuthForm />
+        <AuthForm setIsAuthenticated={setIsAuthenticated} />
       ) : (
         <div className="search-container">
           <div className="length-input">
