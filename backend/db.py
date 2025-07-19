@@ -28,6 +28,13 @@ def init_db():
         FOREIGN KEY (user_email) REFERENCES Users (email)
     );
     ''')
+
+    cursor.execute('''CREATE TABLE IF NOT EXISTS BlacklistedTokens (
+        id TEXT PRIMARY KEY,
+        token TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+                   ''')
     
     conn.commit()
     conn.close()

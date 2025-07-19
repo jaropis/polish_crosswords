@@ -41,7 +41,7 @@ const AuthForm = ({ setIsAuthenticated }) => {
       localStorage.setItem("refreshToken", data.refresh_token);
       setIsAuthenticated(true);
     } catch (error) {
-      setAuthError("Nie udało się zalogować: " + error.message);
+      setAuthError("Failed to log in: " + error.message);
     } finally {
       setAuthLoading(false);
     }
@@ -78,7 +78,6 @@ const AuthForm = ({ setIsAuthenticated }) => {
     e.preventDefault();
     if (showLogin) {
       await handleLogin(email, password);
-      resetForm();
     }
   };
   return (
@@ -259,7 +258,6 @@ function App() {
         // handling token expiration
         if (response.status === 401) {
           // token might be expired, trying to refresh
-          // TUTU - fix this
           const refreshSuccess = await refreshToken();
           if (refreshSuccess) {
             return searchWords();
@@ -275,7 +273,7 @@ function App() {
       const data = await response.json();
       setSearchResults(data.results);
     } catch (error) {
-      setError("Nie udało się pobrać wyników: " + error.message);
+      setError("Failed to fetch the results: " + error.message);
     } finally {
       setIsLoading(false);
     }
