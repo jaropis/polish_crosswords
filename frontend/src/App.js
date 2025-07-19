@@ -74,60 +74,11 @@ const AuthForm = ({ setIsAuthenticated }) => {
     }
   };
 
-  const handleLogout = async () => {
-    try {
-      const token = localStorage.getItem("accessToken");
-      if (token) {
-        await fetch("http://localhost:5000/logout", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        });
-      }
-    } catch (error) {
-      console.log("Logout error:", error);
-    } finally {
-      // clearing tokens regardless of API call success
-      localStorage.removeItem("accessToken");
-      localStorage.removeItem("refreshToken");
-      // setIsAuthenticated(false);
-      resetForm();
-    }
-  };
-
-  const refreshToken = async () => {
-    try {
-      const refreshToken = localStorage.getItem("refreshToken");
-      if (!refreshToken) {
-        return false;
-      }
-
-      const response = await fetch("http://localhost:5000/refresh", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${refreshToken}`,
-        },
-      });
-      if (!response.ok) {
-        return false;
-      }
-
-      const data = await response.json();
-      localStorage.setItem("accessToken", data.access_token);
-      return true;
-    } catch (error) {
-      console.error("Tokenrefresh failed:", error);
-      return false;
-    }
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (showLogin) {
       await handleLogin(email, password);
+      resetForm();
     }
   };
   return (
@@ -196,13 +147,64 @@ function App() {
   // authentication state
   const [isAuthenticated, setIsAuthenticated] = useState(false);
 
+  // this will be moved later
+
+  const handleLogout = async () => {
+    try {
+      const token = localStorage.getItem("accessToken");
+      if (token) {
+        await fetch("http://localhost:5000/logout", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        });
+      }
+    } catch (error) {
+      console.log("Logout error:", error);
+    } finally {
+      // clearing tokens regardless of API call success
+      localStorage.removeItem("accessToken");
+      localStorage.removeItem("refreshToken");
+      setIsAuthenticated(false);
+      resetForm();
+    }
+  };
+
+  const refreshToken = async () => {
+    try {
+      const refreshToken = localStorage.getItem("refreshToken");
+      if (!refreshToken) {
+        return false;
+      }
+
+      const response = await fetch("http://localhost:5000/refresh", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${refreshToken}`,
+        },
+      });
+      if (!response.ok) {
+        return false;
+      }
+
+      const data = await response.json();
+      localStorage.setItem("accessToken", data.access_token);
+      return true;
+    } catch (error) {
+      console.error("Token refresh failed:", error);
+      return false;
+    }
+  };
   // checking authentication status
-  // useEffect(() => {
-  //   const token = localStorage.getItem("accessToken");
-  //   if (token) {
-  //     setIsAuthenticated(true);
-  //   }
-  // }, []);
+  useEffect(() => {
+    const token = localStorage.getItem("accessToken");
+    if (token) {
+      setIsAuthenticated(true);
+    }
+  }, []);
 
   // handling word length input change
   const handleWordLengthChange = (e) => {
@@ -258,7 +260,7 @@ function App() {
         if (response.status === 401) {
           // token might be expired, trying to refresh
           // TUTU - fix this
-          const refreshSuccess = false; // await refreshToken();
+          const refreshSuccess = await refreshToken();
           if (refreshSuccess) {
             return searchWords();
           } else {
@@ -292,10 +294,7 @@ function App() {
       <header className="App-header">
         <h1>Polskie Krzyżówki</h1>
         {isAuthenticated && (
-          <button
-            onClick={() => console.log("logging out")}
-            className="logout-button"
-          >
+          <button onClick={handleLogout} className="logout-button">
             Wyloguj
           </button>
         )}
