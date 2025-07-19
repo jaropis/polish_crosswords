@@ -1,27 +1,20 @@
 import React, { useState, useEffect } from "react";
 import "./App.css";
 
-function App() {
-  const [wordLength, setWordLength] = useState("");
-  const [letterInputs, setLetterInputs] = useState([]);
-  const [searchResults, setSearchResults] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState(null);
+const AuthForm = () => {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
 
   // authentication state
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [showLogin, setShowLogin] = useState(true); // true for login, false for register
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState(null);
 
-  // checking authentication status
-  useEffect(() => {
-    const token = localStorage.getItem("accessToken");
-    if (token) {
-      setIsAuthenticated(true);
-    }
-  }, []);
-  // AUTHENTICATION LOGIC
+  const resetForm = () => {
+    setEmail("");
+    setPassword("");
+    setAuthError(null);
+  };
 
   const handleLogin = async (email, password) => {
     setAuthLoading(true);
@@ -44,9 +37,10 @@ function App() {
       const data = await response.json();
 
       // storing tokens in local storage
-      localStorage.setItem("accessToken", data.accessToken);
-      localStorage.setItem("refreshToken", data.refreshToken);
-      setIsAuthenticated(true);
+      localStorage.setItem("accessToken", data.access_token);
+      localStorage.setItem("refreshToken", data.refresh_token);
+      // TUTU fix this
+      // setIsAuthenticated(true);
     } catch (error) {
       setAuthError("Nie udało się zalogować: " + error.message);
     } finally {
@@ -99,10 +93,118 @@ function App() {
       // clearing tokens regardless of API call success
       localStorage.removeItem("accessToken");
       localStorage.removeItem("refreshToken");
-      setIsAuthenticated(false);
+      // setIsAuthenticated(false);
       resetForm();
     }
   };
+
+  const refreshToken = async () => {
+    try {
+      const refreshToken = localStorage.getItem("refreshToken");
+      if (!refreshToken) {
+        return false;
+      }
+
+      const response = await fetch("http://localhost:5000/refresh", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${refreshToken}`,
+        },
+      });
+      if (!response.ok) {
+        return false;
+      }
+
+      const data = await response.json();
+      localStorage.setItem("accessToken", data.access_token);
+      return true;
+    } catch (error) {
+      console.error("Tokenrefresh failed:", error);
+      return false;
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (showLogin) {
+      await handleLogin(email, password);
+    }
+  };
+  return (
+    <div className="auth-container">
+      <div className="auth-form">
+        <h2>{showLogin ? "Zaloguj się" : "Zarejestruj się"}</h2>
+
+        <form onSubmit={handleSubmit}>
+          <div className="form-group">
+            <label htmlFor="email">Email:</label>
+            <input
+              type="email"
+              id="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="password">Hasło:</label>
+            <input
+              type="password"
+              id="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              minLength="6"
+            />
+          </div>
+
+          <button type="submit" disabled={authLoading}>
+            {authLoading
+              ? "Ładowanie..."
+              : showLogin
+              ? "Zaloguj"
+              : "Zarejestruj"}
+          </button>
+        </form>
+
+        {authError && <p className="error">{authError}</p>}
+
+        <p>
+          {showLogin ? "Nie masz konta? " : "Masz już konto? "}
+          <button
+            type="button"
+            onClick={() => {
+              setShowLogin(!showLogin);
+              setAuthError(null);
+            }}
+            className="link-button"
+          >
+            {showLogin ? "Zarejestruj się" : "Zaloguj się"}
+          </button>
+        </p>
+      </div>
+    </div>
+  );
+};
+function App() {
+  const [wordLength, setWordLength] = useState("");
+  const [letterInputs, setLetterInputs] = useState([]);
+  const [searchResults, setSearchResults] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+  // authentication state
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  // checking authentication status
+  useEffect(() => {
+    const token = localStorage.getItem("accessToken");
+    if (token) {
+      setIsAuthenticated(true);
+    }
+  }, []);
+
   // BUSINESS LOGIC
   // handling word length input change
   const handleWordLengthChange = (e) => {
@@ -157,7 +259,8 @@ function App() {
         // handling token expiration
         if (response.status === 401) {
           // token might be expired, trying to refresh
-          const refreshSuccess = await refreshToken();
+          // TUTU - fix this
+          const refreshSuccess = false; // await refreshToken();
           if (refreshSuccess) {
             return searchWords();
           } else {
@@ -190,66 +293,79 @@ function App() {
     <div className="App">
       <header className="App-header">
         <h1>Polskie Krzyżówki</h1>
-      </header>
-
-      <div className="search-container">
-        <div className="length-input">
-          <label htmlFor="wordLength">Długość słowa:</label>
-          <input
-            type="number"
-            id="wordLength"
-            value={wordLength}
-            onChange={handleWordLengthChange}
-            min="1"
-          />
-          <button onClick={generateInputs}>Generuj</button>
-          <button onClick={resetForm} className="reset-button">
-            Resetuj
+        {isAuthenticated && (
+          <button
+            onClick={() => console.log("logging out")}
+            className="logout-button"
+          >
+            Wyloguj
           </button>
-        </div>
+        )}
+      </header>
+      {!isAuthenticated ? (
+        <AuthForm />
+      ) : (
+        <div className="search-container">
+          <div className="length-input">
+            <label htmlFor="wordLength">Długość słowa:</label>
+            <input
+              type="number"
+              id="wordLength"
+              value={wordLength}
+              onChange={handleWordLengthChange}
+              min="1"
+            />
+            <button onClick={generateInputs}>Generuj</button>
+            <button onClick={resetForm} className="reset-button">
+              Resetuj
+            </button>
+          </div>
 
-        {letterInputs.length > 0 && (
-          <div className="letters-container">
-            <p>Wprowadź znane litery (pozostaw puste dla nieznanych):</p>
-            <div className="letter-inputs">
-              {letterInputs.map((letter, index) => (
-                <div key={index} className="letter-position">
-                  <div className="position-number">{index + 1}</div>
-                  <input
-                    type="text"
-                    maxLength="1"
-                    value={letter}
-                    onChange={(e) => handleLetterChange(index, e.target.value)}
-                    className="letter-input"
-                  />
-                </div>
-              ))}
+          {letterInputs.length > 0 && (
+            <div className="letters-container">
+              <p>Wprowadź znane litery (pozostaw puste dla nieznanych):</p>
+              <div className="letter-inputs">
+                {letterInputs.map((letter, index) => (
+                  <div key={index} className="letter-position">
+                    <div className="position-number">{index + 1}</div>
+                    <input
+                      type="text"
+                      maxLength="1"
+                      value={letter}
+                      onChange={(e) =>
+                        handleLetterChange(index, e.target.value)
+                      }
+                      className="letter-input"
+                    />
+                  </div>
+                ))}
+              </div>
+              <button onClick={searchWords}>Szukaj</button>
             </div>
-            <button onClick={searchWords}>Szukaj</button>
-          </div>
-        )}
-
-        {isLoading && <p>Wyszukiwanie...</p>}
-
-        {error && <p className="error">{error}</p>}
-
-        {searchResults.length > 0 && (
-          <div className="results-container">
-            <h2>Znalezione słowa:</h2>
-            <ul className="results-list">
-              {searchResults.map((word, index) => (
-                <li key={index}>{word}</li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {searchResults.length === 0 &&
-          !isLoading &&
-          letterInputs.length > 0 && (
-            <p>Nie znaleziono słów pasujących do Twoich kryteriów.</p>
           )}
-      </div>
+
+          {isLoading && <p>Wyszukiwanie...</p>}
+
+          {error && <p className="error">{error}</p>}
+
+          {searchResults.length > 0 && (
+            <div className="results-container">
+              <h2>Znalezione słowa:</h2>
+              <ul className="results-list">
+                {searchResults.map((word, index) => (
+                  <li key={index}>{word}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {searchResults.length === 0 &&
+            !isLoading &&
+            letterInputs.length > 0 && (
+              <p>Nie znaleziono słów pasujących do Twoich kryteriów.</p>
+            )}
+        </div>
+      )}
     </div>
   );
 }
