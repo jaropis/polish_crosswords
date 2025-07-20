@@ -1,3 +1,4 @@
+import os
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager, create_access_token, create_refresh_token, jwt_required, get_jwt_identity, get_jwt
@@ -10,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 app = Flask(__name__)
 CORS(app)  # enabling cross-origin requests for development
 app.teardown_appcontext(close_db)
-app.config['JWT_SECRET_KEY'] = "12345"
+app.config['JWT_SECRET_KEY'] = os.environ.get("JWT_SECRET_KEY", "12345")
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(minutes=15)
 app.config['JWT_REFRESH_TOKEN_EXPIRES'] = timedelta(days=30)
 jwt = JWTManager(app)
