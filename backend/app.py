@@ -14,12 +14,12 @@ from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
+# loading environment variables from .env file
 load_dotenv()
 app = Flask(__name__)
 CORS(app)  # enabling cross-origin requests for development
 app.teardown_appcontext(close_db)
-app.config['JWT_SECRET_KEY'] = os.environ.get("JWT_SECRET_KEY", "12345")
+app.config['JWT_SECRET_KEY'] = os.environ.get("JWT_SECRET_KEY", "")
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(minutes=15)
 app.config['JWT_REFRESH_TOKEN_EXPIRES'] = timedelta(days=30)
 
@@ -185,18 +185,6 @@ def get_stats():
     }
     
     return jsonify(stats)
-
-@app.route('/init_db', methods=['GET'])
-def init_database():
-    """
-    Initialize the database and create tables if they do not exist.
-    This endpoint is for development purposes only.
-    """
-    try:
-        init_db()
-        return jsonify({'message': 'Database initialized successfully.'}), 200
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
 @app.route('/register', methods=['POST'])
 def register_user():
@@ -406,6 +394,17 @@ def logout_user():
         app.logger.error(f"Error during logout: {str(e)}")
         return jsonify({'error': 'Logout failed'}), 500
 
+def init_database():
+    """
+    Initialize the database and create tables if they do not exist.
+    This endpoint is for development purposes only.
+    """
+    try:
+        init_db()
+        return jsonify({'message': 'Database initialized successfully.'}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    
 if __name__ == '__main__':
     # loading dictionary at startup
     load_dictionary()

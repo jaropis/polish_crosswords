@@ -31,7 +31,7 @@ def init_db():
         FOREIGN KEY (user_email) REFERENCES Users (email)
     );
     ''')
-
+    print("3 Creating BlacklistedTokens table if it does not exist")
     cursor.execute('''CREATE TABLE IF NOT EXISTS BlacklistedTokens (
         id TEXT PRIMARY KEY,
         token TEXT NOT NULL,
