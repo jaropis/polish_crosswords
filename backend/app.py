@@ -7,13 +7,30 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from db import init_db, get_db, close_db
 import sqlite3
 import uuid
+import secrets
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta, timezone
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 app = Flask(__name__)
 CORS(app)  # enabling cross-origin requests for development
 app.teardown_appcontext(close_db)
 app.config['JWT_SECRET_KEY'] = os.environ.get("JWT_SECRET_KEY", "12345")
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(minutes=15)
 app.config['JWT_REFRESH_TOKEN_EXPIRES'] = timedelta(days=30)
+
+# Email configuration
+app.config['MAIL_SERVER'] = 'smtp.gmail.com'
+app.config['MAIL_PORT'] = 587
+app.config['MAIL_USE_TLS'] = True
+app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USERNAME', '')
+app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASSWORD', '')
+app.config['FRONTEND_URL'] = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
+
 jwt = JWTManager(app)
 
 @jwt.token_in_blocklist_loader
@@ -74,6 +91,41 @@ def load_dictionary():
     except Exception as e:
         print(f"Error loading dictionary: {str(e)}")
         dictionary_loaded = False
+
+def send_verification_email(email, token):
+    """
+    Send email verification using Gmail SMTP
+    """
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = app.config['MAIL_USERNAME']
+        msg['To'] = email
+        msg['Subject'] = "Verify your crossword account"
+        
+        verification_url = f"{app.config['FRONTEND_URL']}/verify?token={token}"
+        body = f"""
+        Welcome to Crossword Helper!
+        
+        Please click the link below to verify your email address:
+        {verification_url}
+        
+        This link will expire in 24 hours.
+        
+        If you didn't create this account, please ignore this email.
+        """
+        
+        msg.attach(MIMEText(body, 'plain'))
+        
+        with smtplib.SMTP(app.config['MAIL_SERVER'], app.config['MAIL_PORT']) as server:
+            server.starttls()
+            server.login(app.config['MAIL_USERNAME'], app.config['MAIL_PASSWORD'])
+            server.send_message(msg)
+        
+        print(f"Verification email sent to {email}")
+        return True
+    except Exception as e:
+        print(f"Error sending email: {str(e)}")
+        return False
 
 @app.route('/search', methods=['POST'])
 @jwt_required()
@@ -150,7 +202,7 @@ def init_database():
 def register_user():
     """
     Register a new user with email and password.
-    Passwords are stored as hashes for security.
+    Sends verification email before user can log in.
     """
     data = request.json
     email = data.get('email')
@@ -163,10 +215,23 @@ def register_user():
     cursor = db.cursor()
     
     try:
+        # Generate verification token
+        verification_token = secrets.token_urlsafe(32)
+        verification_expires = datetime.now(timezone.utc) + timedelta(hours=24)
+        
         password_hash = generate_password_hash(password)
-        cursor.execute('INSERT INTO Users (email, password_hash) VALUES (?, ?)', (email, password_hash))
+        cursor.execute('''INSERT INTO Users 
+                         (email, password_hash, email_verified, verification_token, verification_expires) 
+                         VALUES (?, ?, ?, ?, ?)''', 
+                      (email, password_hash, False, verification_token, verification_expires))
         db.commit()
-        return jsonify({'message': 'User registered successfully.'}), 201
+        
+        # Send verification email
+        if send_verification_email(email, verification_token):
+            return jsonify({'message': 'User registered successfully. Please check your email to verify your account.'}), 201
+        else:
+            return jsonify({'error': 'User registered but failed to send verification email. Please contact support.'}), 201
+            
     except sqlite3.IntegrityError:
         return jsonify({'error': 'Email already exists.'}), 409
     except Exception as e:
@@ -176,6 +241,7 @@ def register_user():
 def login_user():
     """
     Authenticate a user and return a JWT token.
+    Requires email to be verified.
     """
     data = request.json
     email = data.get('email')
@@ -187,23 +253,111 @@ def login_user():
     db = get_db()
     cursor = db.cursor()
     
-    cursor.execute('SELECT password_hash FROM Users WHERE email = ?', (email,))
+    cursor.execute('SELECT password_hash, email_verified FROM Users WHERE email = ?', (email,))
     user = cursor.fetchone()
     
-    if user and check_password_hash(user['password_hash'], password):
-        access_token = create_access_token(identity=email)
-        refresh_token = create_refresh_token(identity=email)
-
-        # storing refresh token in database
-        refresh_token_id = str(uuid.uuid4())
-        expires_at = datetime.now(timezone.utc) + app.config['JWT_REFRESH_TOKEN_EXPIRES']
-        cursor.execute('''
-                       INSERT INTO RefreshTokens (id, user_email, token_hash, expires_at) 
-                       VALUES (?, ?, ?, ?)''', (refresh_token_id, email, generate_password_hash(refresh_token), expires_at))
-        db.commit()
-        return jsonify({'access_token': access_token, 'refresh_token': refresh_token}), 200
-    else:
+    if not user:
         return jsonify({'error': 'Invalid credentials.'}), 401
+    
+    if not check_password_hash(user['password_hash'], password):
+        return jsonify({'error': 'Invalid credentials.'}), 401
+    
+    if not user['email_verified']:
+        return jsonify({'error': 'Please verify your email before logging in.'}), 403
+    
+    # User is verified, create tokens
+    access_token = create_access_token(identity=email)
+    refresh_token = create_refresh_token(identity=email)
+
+    # storing refresh token in database
+    refresh_token_id = str(uuid.uuid4())
+    expires_at = datetime.now(timezone.utc) + app.config['JWT_REFRESH_TOKEN_EXPIRES']
+    cursor.execute('''
+                   INSERT INTO RefreshTokens (id, user_email, token_hash, expires_at) 
+                   VALUES (?, ?, ?, ?)''', (refresh_token_id, email, generate_password_hash(refresh_token), expires_at))
+    db.commit()
+    return jsonify({'access_token': access_token, 'refresh_token': refresh_token}), 200
+    
+@app.route('/verify-email', methods=['GET'])
+def verify_email():
+    """
+    Verify user's email address using the token from the email link.
+    """
+    token = request.args.get('token')
+    
+    if not token:
+        return jsonify({'error': 'Verification token is required.'}), 400
+    
+    db = get_db()
+    cursor = db.cursor()
+    
+    try:
+        # Find user with this verification token
+        cursor.execute('''SELECT email, verification_expires 
+                         FROM Users 
+                         WHERE verification_token = ? AND email_verified = FALSE''', (token,))
+        user = cursor.fetchone()
+        
+        if not user:
+            return jsonify({'error': 'Invalid or already used verification token.'}), 400
+        
+        # Check if token has expired
+        if datetime.now(timezone.utc) > datetime.fromisoformat(user['verification_expires'].replace('Z', '+00:00')):
+            return jsonify({'error': 'Verification token has expired.'}), 400
+        
+        # Mark email as verified and clear verification token
+        cursor.execute('''UPDATE Users 
+                         SET email_verified = TRUE, verification_token = NULL, verification_expires = NULL 
+                         WHERE verification_token = ?''', (token,))
+        db.commit()
+        
+        return jsonify({'message': 'Email verified successfully. You can now log in.'}), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/resend-verification', methods=['POST'])
+def resend_verification():
+    """
+    Resend verification email for unverified users.
+    """
+    data = request.json
+    email = data.get('email')
+    
+    if not email:
+        return jsonify({'error': 'Email is required.'}), 400
+    
+    db = get_db()
+    cursor = db.cursor()
+    
+    try:
+        # Check if user exists and is not verified
+        cursor.execute('SELECT email_verified FROM Users WHERE email = ?', (email,))
+        user = cursor.fetchone()
+        
+        if not user:
+            return jsonify({'error': 'User not found.'}), 404
+        
+        if user['email_verified']:
+            return jsonify({'error': 'Email is already verified.'}), 400
+        
+        # Generate new verification token
+        verification_token = secrets.token_urlsafe(32)
+        verification_expires = datetime.now(timezone.utc) + timedelta(hours=24)
+        
+        cursor.execute('''UPDATE Users 
+                         SET verification_token = ?, verification_expires = ? 
+                         WHERE email = ?''', (verification_token, verification_expires, email))
+        db.commit()
+        
+        # Send new verification email
+        if send_verification_email(email, verification_token):
+            return jsonify({'message': 'Verification email sent successfully.'}), 200
+        else:
+            return jsonify({'error': 'Failed to send verification email.'}), 500
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
     
 @app.route('/refresh', methods=['POST'])
 @jwt_required(refresh=True)

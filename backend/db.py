@@ -15,6 +15,9 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             email TEXT NOT NULL UNIQUE,
             password_hash TEXT NOT NULL,
+            email_verified BOOLEAN DEFAULT FALSE,
+            verification_token TEXT,
+            verification_expires TIMESTAMP,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );''')
 
