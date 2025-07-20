@@ -13,7 +13,6 @@ const AuthForm = ({ setIsAuthenticated }) => {
   const resetForm = () => {
     setEmail("");
     setPassword("");
-    setAuthError(null);
   };
 
   const handleLogin = async (email, password) => {
@@ -42,6 +41,7 @@ const AuthForm = ({ setIsAuthenticated }) => {
       setIsAuthenticated(true);
     } catch (error) {
       setAuthError("Failed to log in: " + error.message);
+      resetForm();
     } finally {
       setAuthLoading(false);
     }

@@ -194,7 +194,7 @@ def login_user():
         refresh_token = create_refresh_token(identity=email)
 
         # storing refresh token in database
-        refresh_token_id= str(uuid.uuid4())
+        refresh_token_id = str(uuid.uuid4())
         expires_at = datetime.now(timezone.utc) + app.config['JWT_REFRESH_TOKEN_EXPIRES']
         cursor.execute('''
                        INSERT INTO RefreshTokens (id, user_email, token_hash, expires_at) 
