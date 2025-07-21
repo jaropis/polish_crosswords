@@ -209,8 +209,8 @@ def register_user():
     try:
         # Generate verification token
         verification_token = secrets.token_urlsafe(32)
-        verification_expires = datetime.now(timezone.utc) + timedelta(hours=24)
-        
+        verification_expires = datetime.now(timezone.utc) + timedelta(hours=48)
+        print(f"Generated verification token: {verification_token} with expiry: {verification_expires}")
         password_hash = generate_password_hash(password)
         cursor.execute('''INSERT INTO Users 
                          (email, password_hash, email_verified, verification_token, verification_expires) 
@@ -276,7 +276,7 @@ def verify_email():
     Verify user's email address using the token from the email link.
     """
     token = request.args.get('token')
-    
+    print(f"Verification token received: {token}")
     if not token:
         return jsonify({'error': 'Verification token is required.'}), 400
     
@@ -284,30 +284,51 @@ def verify_email():
     cursor = db.cursor()
     
     try:
-        # Find user with this verification token
-        cursor.execute('''SELECT email, verification_expires 
+        # first check if user with this token exists
+        cursor.execute('''SELECT email, verification_expires, email_verified 
                          FROM Users 
-                         WHERE verification_token = ? AND email_verified = FALSE''', (token,))
+                         WHERE verification_token = ?''', (token,))
         user = cursor.fetchone()
         
         if not user:
-            return jsonify({'error': 'Invalid or already used verification token.'}), 400
+            # Token not found - check if this token was recently used
+            # Look for recently verified users (within last 5 minutes) 
+            # This handles the React StrictMode double-request issue
+            cursor.execute('''SELECT email, email_verified 
+                             FROM Users 
+                             WHERE email_verified = TRUE 
+                             AND verification_token IS NULL
+                             AND created_at > ?''', 
+                          (datetime.now(timezone.utc) - timedelta(minutes=5),))
+            recent_user = cursor.fetchone()
+            
+            if recent_user:
+                print("Token already used but email recently verified.")
+                return jsonify({'message': 'Email already verified. You can now log in.'}), 200
+            else:
+                print("No user found with this token.")
+                return jsonify({'error': 'Invalid verification token.'}), 400
+        
+        # if already verified, return success (idempotent behavior)
+        if user['email_verified']:
+            print("Email already verified, returning success.")
+            return jsonify({'message': 'Email already verified. You can now log in.'}), 200
         
         # checking if token has expired
         try:
-            # converting stored timestamp to datetime object
             expires_at = datetime.fromisoformat(user['verification_expires'].replace('Z', '+00:00')) if isinstance(user['verification_expires'], str) else user['verification_expires']
             
             if datetime.now(timezone.utc) > expires_at:
+                print("Verification token has expired.")
                 return jsonify({'error': 'Verification token has expired.'}), 400
         except ValueError:
-            # handling parsing errors
+            print("Error parsing verification timestamp.")
             return jsonify({'error': 'Invalid verification timestamp.'}), 500
         
         # marking email as verified and clear verification token
         cursor.execute('''UPDATE Users 
                          SET email_verified = TRUE, verification_token = NULL, verification_expires = NULL 
-                         WHERE verification_token = ?''', (token,))
+                         WHERE verification_token = ? AND email_verified = FALSE''', (token,))
         db.commit()
         
         return jsonify({'message': 'Email verified successfully. You can now log in.'}), 200
@@ -330,7 +351,7 @@ def resend_verification():
     cursor = db.cursor()
     
     try:
-        # Check if user exists and is not verified
+        # checking if user exists and is not verified
         cursor.execute('SELECT email_verified FROM Users WHERE email = ?', (email,))
         user = cursor.fetchone()
         
@@ -340,7 +361,7 @@ def resend_verification():
         if user['email_verified']:
             return jsonify({'error': 'Email is already verified.'}), 400
         
-        # Generate new verification token
+        # generating new verification token
         verification_token = secrets.token_urlsafe(32)
         verification_expires = datetime.now(timezone.utc) + timedelta(hours=24)
         
@@ -349,7 +370,7 @@ def resend_verification():
                          WHERE email = ?''', (verification_token, verification_expires, email))
         db.commit()
         
-        # Send new verification email
+        # sending new verification email
         if send_verification_email(email, verification_token):
             return jsonify({'message': 'Verification email sent successfully.'}), 200
         else:
