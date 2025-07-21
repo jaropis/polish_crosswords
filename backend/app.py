@@ -19,7 +19,11 @@ load_dotenv()
 app = Flask(__name__)
 CORS(app)  # enabling cross-origin requests for development
 app.teardown_appcontext(close_db)
-app.config['JWT_SECRET_KEY'] = os.environ.get("JWT_SECRET_KEY", "")
+jwt_secret_key=os.environ.get("JWT_SECRET_KEY")
+if not jwt_secret_key:
+    raise RuntimeError("JWT_SECRET_KEY environment variable is not set. The application cannot start without it.")
+app.config['JWT_SECRET_KEY'] = jwt_secret_key
+
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(minutes=15)
 app.config['JWT_REFRESH_TOKEN_EXPIRES'] = timedelta(days=30)
 
@@ -218,7 +222,7 @@ def register_user():
         if send_verification_email(email, verification_token):
             return jsonify({'message': 'User registered successfully. Please check your email to verify your account.'}), 201
         else:
-            return jsonify({'error': 'User registered but failed to send verification email. Please contact support.'}), 201
+            return jsonify({'error': 'User registered but failed to send verification email. Please contact support.'}), 202
             
     except sqlite3.IntegrityError:
         return jsonify({'error': 'Email already exists.'}), 409
@@ -289,11 +293,18 @@ def verify_email():
         if not user:
             return jsonify({'error': 'Invalid or already used verification token.'}), 400
         
-        # Check if token has expired
-        if datetime.now(timezone.utc) > datetime.fromisoformat(user['verification_expires'].replace('Z', '+00:00')):
-            return jsonify({'error': 'Verification token has expired.'}), 400
+        # checking if token has expired
+        try:
+            # converting stored timestamp to datetime object
+            expires_at = datetime.fromisoformat(user['verification_expires'].replace('Z', '+00:00')) if isinstance(user['verification_expires'], str) else user['verification_expires']
+            
+            if datetime.now(timezone.utc) > expires_at:
+                return jsonify({'error': 'Verification token has expired.'}), 400
+        except ValueError:
+            # handling parsing errors
+            return jsonify({'error': 'Invalid verification timestamp.'}), 500
         
-        # Mark email as verified and clear verification token
+        # marking email as verified and clear verification token
         cursor.execute('''UPDATE Users 
                          SET email_verified = TRUE, verification_token = NULL, verification_expires = NULL 
                          WHERE verification_token = ?''', (token,))
