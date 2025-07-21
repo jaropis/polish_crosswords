@@ -1,5 +1,13 @@
 import React, { useState, useEffect } from "react";
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  useSearchParams,
+  useNavigate,
+} from "react-router-dom";
 import "./App.css";
+import EmailVerification from "./EmailVerification";
 
 const AuthForm = ({ setIsAuthenticated }) => {
   const [email, setEmail] = useState("");
@@ -9,10 +17,14 @@ const AuthForm = ({ setIsAuthenticated }) => {
   const [showLogin, setShowLogin] = useState(true); // true for login, false for register
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState(null);
+  const [registrationSuccess, setRegistrationSuccess] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
 
   const resetForm = () => {
     setEmail("");
     setPassword("");
+    setAuthError(null);
+    setRegistrationSuccess(false);
   };
 
   const handleLogin = async (email, password) => {
@@ -50,6 +62,7 @@ const AuthForm = ({ setIsAuthenticated }) => {
   const handleRegister = async (email, password) => {
     setAuthLoading(true);
     setAuthError(null);
+    setRegistrationSuccess(false);
 
     try {
       const response = await fetch("http://localhost:5000/register", {
@@ -60,12 +73,14 @@ const AuthForm = ({ setIsAuthenticated }) => {
         body: JSON.stringify({ email, password }),
       });
 
+      const data = await response.json();
+
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Registration failed");
+        throw new Error(data.error || "Registration failed");
       }
 
-      setShowLogin(true);
+      setRegistrationSuccess(true);
+      setPassword(""); // clear password but keep email for resend functionality
       setAuthError(null);
     } catch (error) {
       setAuthError(error.message);
@@ -74,10 +89,50 @@ const AuthForm = ({ setIsAuthenticated }) => {
     }
   };
 
+  const handleResendVerification = async () => {
+    if (!email) {
+      setAuthError(
+        "Wprowadź adres email aby wysłać ponownie link weryfikacyjny.",
+      );
+      return;
+    }
+
+    setResendLoading(true);
+    setAuthError(null);
+
+    try {
+      const response = await fetch(
+        "http://localhost:5000/resend-verification",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ email }),
+        },
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to resend verification email");
+      }
+
+      setAuthError(null);
+      // You might want to show a success message here
+    } catch (error) {
+      setAuthError(error.message);
+    } finally {
+      setResendLoading(false);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (showLogin) {
       await handleLogin(email, password);
+    } else {
+      await handleRegister(email, password);
     }
   };
   return (
@@ -118,6 +173,26 @@ const AuthForm = ({ setIsAuthenticated }) => {
           </button>
         </form>
 
+        {registrationSuccess && !showLogin && (
+          <div className="registration-success">
+            <p className="success">
+              Rejestracja zakończona pomyślnie! Sprawdź swoją skrzynkę email i
+              kliknij link weryfikacyjny.
+            </p>
+            <p>
+              Nie otrzymałeś/aś wiadomości?{" "}
+              <button
+                type="button"
+                onClick={handleResendVerification}
+                disabled={resendLoading}
+                className="link-button"
+              >
+                {resendLoading ? "Wysyłanie..." : "Wyślij ponownie"}
+              </button>
+            </p>
+          </div>
+        )}
+
         {authError && <p className="error">{authError}</p>}
 
         <p>
@@ -126,7 +201,7 @@ const AuthForm = ({ setIsAuthenticated }) => {
             type="button"
             onClick={() => {
               setShowLogin(!showLogin);
-              setAuthError(null);
+              resetForm();
             }}
             className="link-button"
           >
@@ -365,4 +440,15 @@ function App() {
   );
 }
 
-export default App;
+const RouterApp = () => {
+  return (
+    <Router>
+      <Routes>
+        <Route path="/" element={<App />} />
+        <Route path="/verify" element={<EmailVerification />} />
+      </Routes>
+    </Router>
+  );
+};
+
+export default RouterApp;
