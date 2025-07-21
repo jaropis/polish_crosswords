@@ -1,3 +1,15 @@
+.env*
+*.md
 *.db
-__pycache__/db.cpython-39.pyc
+
+__pycache__/
 *.pyc
+*.pyo
+*.pyd
+.Python
+
+.vscode/
+.idea/
+
+.DS_Store
+Thumbs.db
